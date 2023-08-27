@@ -1,0 +1,23 @@
+{
+    "name": "ryangurnick/filesystem-database",
+    "description": "Filesystem adapter to store files within the database",
+    "autoload": {
+        "psr-4": {
+            "Ryangurnick\\FilesystemDatabase\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Ryan Gurnick",
+            "email": "ryangurnick@gmail.com"
+        }
+    ],
+    "extras": {
+        "laravel": {
+            "providers": [
+                "Ryangurnick\\FilesystemDatabase\\FilesystemDatabaseServiceProvider"
+            ]
+        }
+    },
+    "require": {}
+}
