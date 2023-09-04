@@ -1,6 +1,7 @@
 {
     "name": "ryangurnick/filesystem-database",
     "description": "Filesystem adapter to store files within the database",
+    "license": "MIT",
     "autoload": {
         "psr-4": {
             "Ryangurnick\\FilesystemDatabase\\": "src/"
