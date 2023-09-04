@@ -6,4 +6,5 @@ You can install the package via composer:
 1. ``composer require ryangurnick/filesystem-database``
 2. Setup your .env to have proper database configuration.
 3. In the .env set ``FILESYSTEM_DISK=database``
+4. Add ``\Ryangurnick\FilesystemDatabase\FilesystemDatabaseServiceProvider::class,`` to the providers array in `config/app.php`
 4. ``php artisan migrate``
