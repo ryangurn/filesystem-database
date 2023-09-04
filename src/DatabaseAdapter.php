@@ -6,8 +6,10 @@ use Illuminate\Support\Str;
 use League\Flysystem\Config;
 use League\Flysystem\FileAttributes;
 use League\Flysystem\FilesystemAdapter;
+use League\Flysystem\UnableToCopyFile;
 use League\Flysystem\UnableToCreateDirectory;
 use League\Flysystem\UnableToListContents;
+use League\Flysystem\UnableToMoveFile;
 use League\Flysystem\UnableToReadFile;
 use League\Flysystem\UnableToSetVisibility;
 use League\Flysystem\UnableToWriteFile;
@@ -15,17 +17,14 @@ use Ryangurnick\FilesystemDatabase\Models\Binary;
 
 class DatabaseAdapter implements FilesystemAdapter
 {
-
-    protected string $dir;
-
-    protected string $name;
-
     /**
      * @inheritDoc
      */
     public function fileExists(string $path): bool
     {
-        return Binary::where('path', $path)->count() == 1;
+        $this->validatePath($path);
+
+        return Binary::where('name', $path)->count() == 1;
     }
 
     /**
@@ -42,6 +41,8 @@ class DatabaseAdapter implements FilesystemAdapter
      */
     public function write(string $path, string $contents, Config $config): void
     {
+        $this->validatePath($path);
+
         $writeStream = fopen('php://temp', 'w+b');
         fwrite($writeStream, $contents);
         rewind($writeStream);
@@ -53,22 +54,21 @@ class DatabaseAdapter implements FilesystemAdapter
      */
     public function writeStream(string $path, $contents, Config $config): void
     {
-        $this->splitPath($path);
+        $this->validatePath($path);
+
         $content = stream_get_contents($contents);
         if (!$content)
             throw new UnableToWriteFile("Appears to be an empty file or unable to read the stream");
 
         // check if it already exists
-        if (Binary::where('path', $this->dir)
-                ->where('name', $this->name)
+        if (Binary::where('name', $path)
                 ->count() > 0)
-            throw new UnableToWriteFile("There is already a file with that name {$this->name} at the path {$this->dir}");
+            throw new UnableToWriteFile("There is already a file at that path: {$path}");
 
         // create the new item
         $binary = new Binary();
         $binary->hash = Str::orderedUuid();
-        $binary->path = $this->dir;
-        $binary->name = $this->name;
+        $binary->name = $path;
         $binary->content = base64_encode($content);
         $binary->size = strlen($content);
         $binary->mime_type = mime_content_type($contents) ?? null;
@@ -80,10 +80,9 @@ class DatabaseAdapter implements FilesystemAdapter
      */
     public function read(string $path): string
     {
-        $this->splitPath($path);
+        $this->validatePath($path);
 
-        $binary = Binary::where('path', $this->dir)
-            ->where('name', $this->name);
+        $binary = Binary::where('name', $path);
 
         if (($binary->count()) != 1)
             throw new UnableToReadFile("Cannot find the file {$path}");
@@ -96,6 +95,7 @@ class DatabaseAdapter implements FilesystemAdapter
      */
     public function readStream(string $path)
     {
+        $this->validatePath($path);
         $contents = $this->read($path);
         $writeStream = fopen('php://temp', 'w+b');
         fwrite($writeStream, $contents);
@@ -108,10 +108,9 @@ class DatabaseAdapter implements FilesystemAdapter
      */
     public function delete(string $path): void
     {
-        $this->splitPath($path);
+        $this->validatePath($path);
 
-        Binary::where('path', $this->dir)
-            ->where('name', $this->name)
+        Binary::where('name', $path)
             ->delete();
     }
 
@@ -120,9 +119,9 @@ class DatabaseAdapter implements FilesystemAdapter
      */
     public function deleteDirectory(string $path): void
     {
-        $this->splitPath($path);
+        $this->validatePath($path);
 
-        Binary::where('path', $this->dir)
+        Binary::where('name', $path)
             ->delete();
     }
 
@@ -147,7 +146,7 @@ class DatabaseAdapter implements FilesystemAdapter
      */
     public function visibility(string $path): FileAttributes
     {
-        return new FileAttributes($path);
+        throw UnableToSetVisibility::atLocation($path, 'Adapter does not support visibility controls.');
     }
 
     /**
@@ -155,10 +154,9 @@ class DatabaseAdapter implements FilesystemAdapter
      */
     public function mimeType(string $path): FileAttributes
     {
-        $this->splitPath($path);
+        $this->validatePath($path);
 
-        $binary = Binary::where('path', $this->dir)
-            ->where('name', $name);
+        $binary = Binary::where('name', $path);
 
         if (($binary->count()) != 1)
             throw new UnableToReadFile("Cannot find the file {$path}");
@@ -177,10 +175,9 @@ class DatabaseAdapter implements FilesystemAdapter
      */
     public function lastModified(string $path): FileAttributes
     {
-        $this->splitPath($path);
+        $this->validatePath($path);
 
-        $binary = Binary::where('path', $this->dir)
-            ->where('name', $name);
+        $binary = Binary::where('name', $path);
 
         if (($binary->count()) != 1)
             throw new UnableToReadFile("Cannot find the file {$path}");
@@ -198,10 +195,9 @@ class DatabaseAdapter implements FilesystemAdapter
      */
     public function fileSize(string $path): FileAttributes
     {
-        $this->splitPath($path);
+        $this->validatePath($path);
 
-        $binary = Binary::where('path', $this->dir)
-            ->where('name', $name);
+        $binary = Binary::where('name', $path);
 
         if (($binary->count()) != 1)
             throw new UnableToReadFile("Cannot find the file {$path}");
@@ -216,15 +212,10 @@ class DatabaseAdapter implements FilesystemAdapter
      */
     public function listContents(string $path, bool $deep): iterable
     {
-        $this->splitPath($path);
+        $this->validatePath($path);
 
-        if ($this->dir === '.') {
-            $binary = Binary::where('path', $this->name)
-                ->get();
-        } else {
-            $binary = Binary::where('path', $this->dir)
-                ->get();
-        }
+        $binary = Binary::where('name', $path)
+            ->get();
 
         if ($binary->count() <= 0)
             throw new UnableToListContents("Cannot find the path {$path}");
@@ -232,7 +223,7 @@ class DatabaseAdapter implements FilesystemAdapter
         $retArr = [];
         foreach ($binary as $b) {
             $retArr[] = (new FileAttributes(
-                $b->path,
+                $b->name,
                 $b->size ?? null,
                 null,
                 $b->updated_at->timestamp,
@@ -248,25 +239,24 @@ class DatabaseAdapter implements FilesystemAdapter
      */
     public function move(string $source, string $destination, Config $config): void
     {
-        $src = $this->splitPath($source);
-        $dst = $this->splitPath($destination);
-
-        dd($src, $dst);
-
-        // verify both files or both folders
-//        if (($src['dir'] != '.' && $dst['dir'] != '.') || ($src['dir'] != '.' && $src['name'] != ))
+        // validate
+        $this->validatePath($source);
+        $this->validatePath($destination);
 
         // find the record(s)
-        if ($this->dir === '.') {
-            $binary = Binary::where('path', $this->name)
-                ->get();
-        } else {
-            $binary = Binary::where('path', $this->dir)
-                ->where('name', $this->name)
-                ->get();
-        }
+        $srcBinary = Binary::where('name', $source);
+        $dstBinary = Binary::where('name', $destination);
 
-        dd($this->dir, $this->name, $binary);
+        // are there collisions
+        if ($dstBinary->count() != 0)
+            throw UnableToMoveFile::fromLocationTo($source, $destination);
+
+        // are there any things to move...
+        if ($srcBinary->count() == 0)
+            throw UnableToMoveFile::fromLocationTo($source, $destination);
+
+        // update name
+        $srcBinary->update(['name' => $destination]);
     }
 
     /**
@@ -274,13 +264,36 @@ class DatabaseAdapter implements FilesystemAdapter
      */
     public function copy(string $source, string $destination, Config $config): void
     {
-        // TODO: Implement copy() method.
+        // validate
+        $this->validatePath($source);
+        $this->validatePath($destination);
+
+        // find the record(s)
+        $srcBinary = Binary::where('name', $source);
+        $dstBinary = Binary::where('name', $destination);
+
+        // are there collisions
+        if ($dstBinary->count() != 0)
+            throw UnableToCopyFile::fromLocationTo($source, $destination);
+
+        // are there any things to move...
+        if ($srcBinary->count() == 0)
+            throw UnableToCopyFile::fromLocationTo($source, $destination);
+
+        $copy = $srcBinary->first()->replicate();
+        $copy->name = $destination;
+        $copy->save();
     }
 
-    protected function splitPath(string $path)
+    protected function validatePath(string $path)
     {
-        $this->dir = dirname($path);
-        $this->name = basename($path);
-        return ['dir' => $this->dir, 'name' => $this->name];
+        preg_match('/^[a-zA-Z0-9]*[.][a-zA-Z0-9]*$/', $path, $output_array);
+        if (count($output_array) == 0) {
+            if (!str_contains($path, '.') && !str_contains($path, '/'))
+            {
+                throw new \InvalidArgumentException("This adapter requires an extension for the file: {$path}");
+            }
+            throw new \InvalidArgumentException("This adapter does not support folders in the path: {$path}");
+        }
     }
 }

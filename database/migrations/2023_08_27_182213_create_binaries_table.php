@@ -13,14 +13,15 @@ return new class extends Migration
     {
         Schema::create('binaries', function (Blueprint $table) {
             $table->id();
-            $table->uuid('hash');
-            $table->string('path'); // contains the name
-            $table->string('name');
-            $table->integer('size')->nullable();
-            $table->string('mime_type')->nullable();
+            $table->uuid('hash')
+                ->index();
+            $table->string('name')
+                ->unique();
+            $table->integer('size')
+                ->nullable();
+            $table->string('mime_type')
+                ->nullable();
             $table->timestamps();
-
-            $table->unique(['path', 'name']);
         });
 
         DB::statement('ALTER TABLE binaries ADD content LONGBLOB AFTER `name`;');
