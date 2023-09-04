@@ -156,7 +156,7 @@ class DatabaseAdapter implements FilesystemAdapter
     {
         $this->validatePath($path);
 
-        $binary = Binary::where('name', $path);
+        $binary = Binary::where('name', $path)->first();
 
         if (($binary->count()) != 1)
             throw new UnableToReadFile("Cannot find the file {$path}");
@@ -177,7 +177,7 @@ class DatabaseAdapter implements FilesystemAdapter
     {
         $this->validatePath($path);
 
-        $binary = Binary::where('name', $path);
+        $binary = Binary::where('name', $path)->first();
 
         if (($binary->count()) != 1)
             throw new UnableToReadFile("Cannot find the file {$path}");
@@ -197,7 +197,7 @@ class DatabaseAdapter implements FilesystemAdapter
     {
         $this->validatePath($path);
 
-        $binary = Binary::where('name', $path);
+        $binary = Binary::where('name', $path)->first();
 
         if (($binary->count()) != 1)
             throw new UnableToReadFile("Cannot find the file {$path}");
